@@ -49,6 +49,44 @@ class ProxyPool:
         else:
             logger.info("[ProxyPool] 未配置代理")
     
+    async def get_static_proxy(self, session_id: str) -> Optional[str]:
+        """根据session_id获取静态绑定代理
+
+        Args:
+            session_id: 会话ID (通常是SSO Token)
+
+        Returns:
+            代理URL或None
+        """
+        if not self._enabled or not self._pool_url:
+            return None
+
+        try:
+            # 构造基础URL (移除可能存在的路径后缀)
+            base_url = self._pool_url
+            if "/proxy/" in base_url:
+                base_url = base_url.split("/proxy/")[0]
+
+            # 构造静态代理请求URL (固定使用 grok 服务)
+            url = f"{base_url}/proxy/grok/static/{session_id}"
+
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if url := data.get("url"):
+                            proxy = self._normalize_proxy(url)
+                            logger.info(f"[ProxyPool] 成功获取静态代理: {proxy} (session_id: {session_id[:10]}...)")
+                            return proxy
+                    else:
+                        logger.warning(f"[ProxyPool] 获取静态代理失败: HTTP {response.status}")
+
+        except Exception as e:
+            logger.warning(f"[ProxyPool] 获取静态代理异常: {e}")
+
+        return None
+
     async def get_proxy(self) -> Optional[str]:
         """获取代理地址
         
