@@ -371,13 +371,24 @@ class GrokTokenManager:
                 while retry_403_count <= max_403_retries:
                     # 异步获取代理（支持代理池）
                     from app.core.proxy_pool import proxy_pool
-                    
-                    # 如果是403重试且使用代理池，强制刷新代理
-                    if retry_403_count > 0 and proxy_pool._enabled:
-                        logger.info(f"[Token] 403重试 {retry_403_count}/{max_403_retries}，刷新代理...")
-                        proxy = await proxy_pool.force_refresh()
-                    else:
-                        proxy = await setting.get_proxy_async("service")
+
+                    proxy = None
+                    # 优先尝试获取静态绑定代理
+                    try:
+                        sso = self._extract_sso(auth_token)
+                        if sso:
+                            proxy = await proxy_pool.get_static_proxy(sso)
+                    except Exception as e:
+                        logger.warning(f"[Token] 尝试获取静态代理异常: {e}")
+
+                    # 如果未获取到静态代理（或失败），回退到原有逻辑
+                    if not proxy:
+                        # 如果是403重试且使用代理池，强制刷新代理
+                        if retry_403_count > 0 and proxy_pool._enabled:
+                            logger.info(f"[Token] 403重试 {retry_403_count}/{max_403_retries}，刷新代理...")
+                            proxy = await proxy_pool.force_refresh()
+                        else:
+                            proxy = await setting.get_proxy_async("service")
                     
                     proxies = {"http": proxy, "https": proxy} if proxy else None
                     
