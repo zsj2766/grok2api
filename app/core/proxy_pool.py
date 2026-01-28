@@ -68,19 +68,25 @@ class ProxyPool:
                 base_url = base_url.split("/proxy/")[0]
 
             # 构造静态代理请求URL (固定使用 grok 服务)
-            url = f"{base_url}/proxy/grok/static/{session_id}"
+            request_url = f"{base_url}/proxy/grok/static/{session_id}"
+            logger.debug(f"[ProxyPool] 请求静态代理: {request_url}")
 
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as response:
+                async with session.get(request_url) as response:
+                    response_text = await response.text()
+                    logger.info(f"[ProxyPool] 静态代理响应: status={response.status}, body={response_text}")
+
                     if response.status == 200:
                         data = await response.json()
-                        if url := data.get("url"):
-                            proxy = self._normalize_proxy(url)
+                        if proxy_url := data.get("url"):
+                            proxy = self._normalize_proxy(proxy_url)
                             logger.info(f"[ProxyPool] 成功获取静态代理: {proxy} (session_id: {session_id[:10]}...)")
                             return proxy
+                        else:
+                            logger.warning(f"[ProxyPool] 响应中无 url 字段: {data}")
                     else:
-                        logger.warning(f"[ProxyPool] 获取静态代理失败: HTTP {response.status}")
+                        logger.warning(f"[ProxyPool] 获取静态代理失败: HTTP {response.status}, body={response_text}")
 
         except Exception as e:
             logger.warning(f"[ProxyPool] 获取静态代理异常: {e}")
