@@ -68,9 +68,9 @@ class ProxyPool:
             if "/proxy/" in base_url:
                 base_url = base_url.split("/proxy/")[0]
 
-            # 构造静态代理请求URL (固定使用 grok 服务)
-            request_url = f"{base_url}/proxy/grok/static/{session_id}"
-            logger.info(f"[ProxyPool] 请求静态代理: {request_url}")
+            # 构造静态代理请求URL (使用 Query 参数避免 JWT 特殊字符问题)
+            request_url = f"{base_url}/proxy/grok/static?session_id={session_id}"
+            logger.info(f"[ProxyPool] 请求静态代理: {request_url[:100]}...")
 
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout) as session:
