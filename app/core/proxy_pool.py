@@ -2,6 +2,7 @@
 
 import asyncio
 import aiohttp
+import json
 import time
 from typing import Optional, List
 from app.core.logger import logger
@@ -62,14 +63,14 @@ class ProxyPool:
             return None
 
         try:
-            # 构造基础URL (移除可能存在的路径后缀)
-            base_url = self._pool_url
+            # 构造基础URL (移除尾部斜杠和可能存在的路径后缀)
+            base_url = self._pool_url.rstrip('/')
             if "/proxy/" in base_url:
                 base_url = base_url.split("/proxy/")[0]
 
             # 构造静态代理请求URL (固定使用 grok 服务)
             request_url = f"{base_url}/proxy/grok/static/{session_id}"
-            logger.debug(f"[ProxyPool] 请求静态代理: {request_url}")
+            logger.info(f"[ProxyPool] 请求静态代理: {request_url}")
 
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -78,13 +79,25 @@ class ProxyPool:
                     logger.info(f"[ProxyPool] 静态代理响应: status={response.status}, body={response_text}")
 
                     if response.status == 200:
-                        data = await response.json()
-                        if proxy_url := data.get("url"):
+                        proxy_url = None
+                        # 尝试 JSON 格式 {"url": "..."}
+                        try:
+                            data = json.loads(response_text)
+                            proxy_url = data.get("url")
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                        # 回退到纯文本格式 (socks5://... 或 http://...)
+                        if not proxy_url and response_text.strip():
+                            text = response_text.strip()
+                            if text.startswith(("socks5://", "socks5h://", "http://", "https://")):
+                                proxy_url = text
+
+                        if proxy_url:
                             proxy = self._normalize_proxy(proxy_url)
                             logger.info(f"[ProxyPool] 成功获取静态代理: {proxy} (session_id: {session_id[:10]}...)")
                             return proxy
                         else:
-                            logger.warning(f"[ProxyPool] 响应中无 url 字段: {data}")
+                            logger.warning(f"[ProxyPool] 无法解析代理地址: {response_text}")
                     else:
                         logger.warning(f"[ProxyPool] 获取静态代理失败: HTTP {response.status}, body={response_text}")
 
