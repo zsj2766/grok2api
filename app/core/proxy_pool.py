@@ -63,22 +63,17 @@ class ProxyPool:
             return None
 
         try:
-            import base64
-
             # 构造基础URL (移除尾部斜杠和可能存在的路径后缀)
             base_url = self._pool_url.rstrip('/')
             if "/proxy/" in base_url:
                 base_url = base_url.split("/proxy/")[0]
 
-            # 使用 base64 URL-safe 编码避免特殊字符问题，去掉填充的 =
-            encoded_session_id = base64.urlsafe_b64encode(session_id.encode()).decode().rstrip('=')
-            # Query 参数方式
-            request_url = f"{base_url}/proxy/grok/static?session_id={encoded_session_id}"
+            request_url = f"{base_url}/proxy/grok/static"
 
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout) as sess:
-                logger.info(f"[ProxyPool] 请求静态代理: {request_url[:80]}...")
-                async with sess.get(request_url) as response:
+                logger.info(f"[ProxyPool] 请求静态代理: POST {request_url}")
+                async with sess.post(request_url, json={"session_id": session_id}) as response:
                     if response.status == 200:
                         return await self._parse_proxy_response(response, session_id)
                     else:
