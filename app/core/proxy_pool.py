@@ -70,10 +70,12 @@ class ProxyPool:
             if "/proxy/" in base_url:
                 base_url = base_url.split("/proxy/")[0]
 
+            # URL 编码 session_id (包括 . 字符)
+            encoded_session_id = quote(session_id, safe='').replace('.', '%2E')
             # 方案1: Query 参数 (URL 编码)
-            query_url = f"{base_url}/proxy/grok/static?session_id={quote(session_id, safe='')}"
+            query_url = f"{base_url}/proxy/grok/static?session_id={encoded_session_id}"
             # 方案2: Path 参数 + URL 编码
-            path_url = f"{base_url}/proxy/grok/static/{quote(session_id, safe='')}"
+            path_url = f"{base_url}/proxy/grok/static/{encoded_session_id}"
 
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout) as session:
