@@ -72,8 +72,8 @@ class ProxyPool:
 
             # 使用 base64 URL-safe 编码避免特殊字符问题
             encoded_session_id = base64.urlsafe_b64encode(session_id.encode()).decode()
-            # 直接用 Path 参数 (base64 URL-safe 不含特殊字符)
-            request_url = f"{base_url}/proxy/grok/static/{encoded_session_id}"
+            # Query 参数方式
+            request_url = f"{base_url}/proxy/grok/static?session_id={encoded_session_id}"
 
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout) as sess:
