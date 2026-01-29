@@ -70,8 +70,8 @@ class ProxyPool:
             if "/proxy/" in base_url:
                 base_url = base_url.split("/proxy/")[0]
 
-            # 使用 base64 URL-safe 编码避免特殊字符问题
-            encoded_session_id = base64.urlsafe_b64encode(session_id.encode()).decode()
+            # 使用 base64 URL-safe 编码避免特殊字符问题，去掉填充的 =
+            encoded_session_id = base64.urlsafe_b64encode(session_id.encode()).decode().rstrip('=')
             # Query 参数方式
             request_url = f"{base_url}/proxy/grok/static?session_id={encoded_session_id}"
 
