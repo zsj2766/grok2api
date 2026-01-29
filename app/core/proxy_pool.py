@@ -63,36 +63,24 @@ class ProxyPool:
             return None
 
         try:
-            from urllib.parse import quote
+            import base64
 
             # 构造基础URL (移除尾部斜杠和可能存在的路径后缀)
             base_url = self._pool_url.rstrip('/')
             if "/proxy/" in base_url:
                 base_url = base_url.split("/proxy/")[0]
 
-            # URL 编码 session_id (包括 . 字符)
-            encoded_session_id = quote(session_id, safe='').replace('.', '%2E')
-            # 方案1: Query 参数 (URL 编码)
-            query_url = f"{base_url}/proxy/grok/static?session_id={encoded_session_id}"
-            # 方案2: Path 参数 + URL 编码
-            path_url = f"{base_url}/proxy/grok/static/{encoded_session_id}"
+            # 使用 base64 URL-safe 编码避免特殊字符问题
+            encoded_session_id = base64.urlsafe_b64encode(session_id.encode()).decode()
+            # 直接用 Path 参数 (base64 URL-safe 不含特殊字符)
+            request_url = f"{base_url}/proxy/grok/static/{encoded_session_id}"
 
             timeout = aiohttp.ClientTimeout(total=5)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                # 先尝试 Query 参数方式
-                logger.info(f"[ProxyPool] 请求静态代理(Query): {query_url[:80]}...")
-                async with session.get(query_url) as response:
+            async with aiohttp.ClientSession(timeout=timeout) as sess:
+                logger.info(f"[ProxyPool] 请求静态代理: {request_url[:80]}...")
+                async with sess.get(request_url) as response:
                     if response.status == 200:
                         return await self._parse_proxy_response(response, session_id)
-
-                    # Query 方式失败，回退到 Path + URL 编码
-                    if response.status == 404:
-                        logger.info(f"[ProxyPool] Query方式404，回退Path编码: {path_url[:80]}...")
-                        async with session.get(path_url) as path_response:
-                            if path_response.status == 200:
-                                return await self._parse_proxy_response(path_response, session_id)
-                            else:
-                                logger.warning(f"[ProxyPool] Path方式也失败: HTTP {path_response.status}")
                     else:
                         logger.warning(f"[ProxyPool] 获取静态代理失败: HTTP {response.status}")
 
