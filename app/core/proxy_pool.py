@@ -63,52 +63,71 @@ class ProxyPool:
             return None
 
         try:
+            from urllib.parse import quote
+
             # 构造基础URL (移除尾部斜杠和可能存在的路径后缀)
             base_url = self._pool_url.rstrip('/')
             if "/proxy/" in base_url:
                 base_url = base_url.split("/proxy/")[0]
 
-            # 构造静态代理请求URL (使用 Query 参数避免 JWT 特殊字符问题)
-            request_url = f"{base_url}/proxy/grok/static?session_id={session_id}"
-            logger.info(f"[ProxyPool] 请求静态代理: {request_url[:100]}...")
+            # 方案1: Query 参数 (URL 编码)
+            query_url = f"{base_url}/proxy/grok/static?session_id={quote(session_id, safe='')}"
+            # 方案2: Path 参数 + URL 编码
+            path_url = f"{base_url}/proxy/grok/static/{quote(session_id, safe='')}"
 
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(request_url) as response:
-                    response_text = await response.text()
-                    logger.info(f"[ProxyPool] 静态代理响应: status={response.status}, body={response_text}")
-
+                # 先尝试 Query 参数方式
+                logger.info(f"[ProxyPool] 请求静态代理(Query): {query_url[:80]}...")
+                async with session.get(query_url) as response:
                     if response.status == 200:
-                        proxy_url = None
-                        # 尝试 JSON 格式 {"url": "..."}
-                        try:
-                            data = json.loads(response_text)
-                            proxy_url = data.get("url")
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                        # 回退到纯文本格式 (socks5://... 或 http://...)
-                        if not proxy_url and response_text.strip():
-                            text = response_text.strip()
-                            if text.startswith(("socks5://", "socks5h://", "http://", "https://")):
-                                proxy_url = text
+                        return await self._parse_proxy_response(response, session_id)
 
-                        if proxy_url:
-                            proxy = self._normalize_proxy(proxy_url)
-                            logger.info(f"[ProxyPool] 成功获取静态代理: {proxy} (session_id: {session_id[:10]}...)")
-                            return proxy
-                        else:
-                            logger.warning(f"[ProxyPool] 无法解析代理地址: {response_text}")
+                    # Query 方式失败，回退到 Path + URL 编码
+                    if response.status == 404:
+                        logger.info(f"[ProxyPool] Query方式404，回退Path编码: {path_url[:80]}...")
+                        async with session.get(path_url) as path_response:
+                            if path_response.status == 200:
+                                return await self._parse_proxy_response(path_response, session_id)
+                            else:
+                                logger.warning(f"[ProxyPool] Path方式也失败: HTTP {path_response.status}")
                     else:
-                        logger.warning(f"[ProxyPool] 获取静态代理失败: HTTP {response.status}, body={response_text}")
+                        logger.warning(f"[ProxyPool] 获取静态代理失败: HTTP {response.status}")
 
         except Exception as e:
             logger.warning(f"[ProxyPool] 获取静态代理异常: {e}")
 
         return None
 
+    async def _parse_proxy_response(self, response, session_id: str) -> Optional[str]:
+        """解析代理响应"""
+        response_text = await response.text()
+        logger.info(f"[ProxyPool] 静态代理响应: status={response.status}, body={response_text}")
+
+        proxy_url = None
+        # 尝试 JSON 格式 {"url": "..."}
+        try:
+            data = json.loads(response_text)
+            proxy_url = data.get("url")
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # 回退到纯文本格式 (socks5://... 或 http://...)
+        if not proxy_url and response_text.strip():
+            text = response_text.strip()
+            if text.startswith(("socks5://", "socks5h://", "http://", "https://")):
+                proxy_url = text
+
+        if proxy_url:
+            proxy = self._normalize_proxy(proxy_url)
+            logger.info(f"[ProxyPool] 成功获取静态代理: {proxy} (session_id: {session_id[:10]}...)")
+            return proxy
+        else:
+            logger.warning(f"[ProxyPool] 无法解析代理地址: {response_text}")
+            return None
+
     async def get_proxy(self) -> Optional[str]:
         """获取代理地址
-        
+
         Returns:
             代理URL或None
         """
